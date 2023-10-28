@@ -103,7 +103,7 @@ class _NonLocalBlockND(nn.Module):
         g_x = self.g(x).view(b, self.inter_channels, -1)  # [bs, c, w*h]
         g_x = g_x.permute(0, 2, 1)
 
-        theta_x = self.theta(x).view(b, self.inter_channels, -1)   # (1, 32, 1024)
+        theta_x = self.theta(x).view(b, self.inter_channels, -1)  # (1, 32, 1024)
         theta_x = theta_x.permute(0, 2, 1)  # (1, 1024, 32)
 
         phi_x = self.phi(x).view(b, self.inter_channels, -1)
@@ -116,11 +116,11 @@ class _NonLocalBlockND(nn.Module):
         y = torch.matmul(f_div_C, g_x)
         y = y.permute(0, 2, 1).contiguous()
         y = y.view(b, self.inter_channels, *x.size()[2:])
-        W_y = self.W(y)    # (1, 64, 32, 32)
+        W_y = self.W(y)  # (1, 64, 32, 32)
 
         # mem
         mbg = self.mb.unsqueeze(0).repeat(b, 1, 1)  # (1, 32, 256)
-        f1 = torch.matmul(phi_x_for_quant, mbg)   #(1, 256, 256)
+        f1 = torch.matmul(phi_x_for_quant, mbg)  # (1, 256, 256)
         f_div_C1 = F.softmax(f1 * (int(self.inter_channels) ** (-0.5)), dim=-1)
         y1 = torch.matmul(f_div_C1, mbg.permute(0, 2, 1))  # yt = softmax(tm*m^) # (1, 256, 32)
         y1 = y1.permute(0, 2, 1).view(b, self.inter_channels, h, w).contiguous()
@@ -138,16 +138,13 @@ class non_local_MEM(nn.Module):
         self.in_dim = in_dim
         self.conv_head = nn.Conv2d(in_dim, num_feats, 3, 1, 1)
         self.op1 = nn.Sequential(MultiResBlocks(64, 4),
-                                 _NonLocalBlockND(is_training=True),
-                                 ChannelAttention(64)
+                                 _NonLocalBlockND(is_training=True)
                                  )
         self.op2 = nn.Sequential(MultiResBlocks(64, 4),
-                                 _NonLocalBlockND(is_training=True),
-                                 ChannelAttention(64)
+                                 _NonLocalBlockND(is_training=True)
                                  )
         self.op3 = nn.Sequential(MultiResBlocks(64, 4),
-                                 _NonLocalBlockND(is_training=True),
-                                 ChannelAttention(64)
+                                 _NonLocalBlockND(is_training=True)
                                  )
         self.conv_tail = nn.Sequential(MultiResBlocks(64, 4),
                                        nn.Conv2d(num_feats, in_dim, 3, 1, 1))
@@ -172,25 +169,6 @@ class non_local_MEM(nn.Module):
                 fea = self.op3(pyramid_level[i]) + self.upsample2(fea)
         res = self.conv_tail(fea)
         return x + res
-
-
-class ChannelAttention(nn.Module):
-    def __init__(self, in_planes, ):
-        super(ChannelAttention, self).__init__()
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.max_pool = nn.AdaptiveMaxPool2d(1)
-
-        self.fc1 = nn.Conv2d(in_planes, in_planes // 8, 1, bias=False)
-        self.relu1 = nn.ReLU()
-        self.fc2 = nn.Conv2d(in_planes // 8, in_planes, 1, bias=False)
-
-        self.sigmoid = nn.Sigmoid()
-
-    def forward(self, x):
-        avg_out = self.fc2(self.relu1(self.fc1(self.avg_pool(x))))
-        max_out = self.fc2(self.relu1(self.fc1(self.max_pool(x))))
-        out = avg_out + max_out
-        return self.sigmoid(out) * x
 
 
 class Upsample(nn.Module):
